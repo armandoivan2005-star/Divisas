@@ -38,6 +38,7 @@ urlpatterns = [
     path('dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/acciones/', views.admin_stocks_panel, name='admin_stocks_panel'),
     path('dashboard/usuarios/normales/', views.admin_users_normal, name='admin_users_normal'),
+    path('dashboard/usuarios/supervisores/', views.admin_users_supervisor, name='admin_users_supervisor'),
     path('dashboard/usuarios/administradores/', views.admin_users_admin, name='admin_users_admin'),
     path('dashboard/usuarios/<int:user_id>/editar/', views.admin_user_edit, name='admin_user_edit'),
     path('dashboard/usuarios/<int:user_id>/restriccion/', views.admin_user_toggle_restriction, name='admin_user_toggle_restriction'),

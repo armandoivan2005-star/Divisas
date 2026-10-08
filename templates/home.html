@@ -33,7 +33,7 @@
         </table>
     </div>
 
-    {% if user.is_authenticated %}
+    {% if user.is_authenticated and not is_supervisor %}
     <dialog id="alert-modal" class="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900 p-6 text-slate-100 shadow-2xl backdrop:bg-black/60">
         <h2 class="text-xl font-semibold text-cyan-100">Crear alerta</h2>
         <p class="mt-2 text-sm text-slate-300">Configura el par y la condicion para recibir notificacion.</p>
@@ -119,10 +119,10 @@
         </div>
 
         <p class="mt-6 text-sm text-emerald-300">Sesion activa como: {{ user.username }}</p>
-        {% if is_admin_user %}
+        {% if can_access_dashboard %}
         <p class="mt-2 text-sm text-slate-300">Rol asignado: <span class="font-semibold text-white">{{ user_role }}</span></p>
         <a href="{% url 'admin_dashboard' %}" class="mt-3 inline-block rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-brand-100">
-            Ir al dashboard administrador
+            Ir al dashboard
         </a>
         {% endif %}
     {% else %}
@@ -1043,7 +1043,7 @@
         prepareAuthForm(alertForm, 'alert');
     });
 </script>
-{% if user.is_authenticated %}
+{% if user.is_authenticated and not is_supervisor %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         function getCookie(name) {

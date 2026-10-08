@@ -27,6 +27,8 @@
             </button>
             {% if role_name == 'ADMINISTRADOR' %}
             <a href="{% url 'admin_users_admin' %}" class="rounded-lg border border-white/20 px-4 py-2 hover:bg-white/10">Cancelar</a>
+            {% elif role_name == 'SUPERVISOR' %}
+            <a href="{% url 'admin_users_supervisor' %}" class="rounded-lg border border-white/20 px-4 py-2 hover:bg-white/10">Cancelar</a>
             {% else %}
             <a href="{% url 'admin_users_normal' %}" class="rounded-lg border border-white/20 px-4 py-2 hover:bg-white/10">Cancelar</a>
             {% endif %}

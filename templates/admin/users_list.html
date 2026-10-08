@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}CRUD {{ role_name }}{% endblock %}
+{% block title %}Usuarios {{ role_name }}{% endblock %}
 
 {% block content %}
 <section class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
     <div class="flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-bold text-white">CRUD de {{ role_name }}</h1>
+        <h1 class="text-2xl font-bold text-white">Usuarios {{ role_name }}</h1>
         <a href="{% url 'admin_dashboard' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Volver al dashboard</a>
     </div>
 
@@ -22,6 +22,10 @@
                 Crear usuario
             </button>
         </form>
+    {% elif is_supervisor %}
+        <p class="mt-6 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+            Perfil SUPERVISOR: esta seccion es estrictamente de solo lectura.
+        </p>
     {% else %}
         <p class="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
             Modo lectura para administradores secundarios en esta seccion.

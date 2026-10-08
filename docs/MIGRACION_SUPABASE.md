@@ -128,7 +128,7 @@ python manage.py shell -c "from django.contrib.auth.models import User, Group; f
 Compara los conteos con la base de origen y verifica manualmente:
 
 - inicio de sesion de un usuario normal y un administrador;
-- grupos `NORMAL` y `ADMINISTRADOR`;
+- grupos `NORMAL`, `SUPERVISOR` y `ADMINISTRADOR`;
 - favoritos y alertas existentes;
 - creacion y eliminacion de una alerta;
 - dashboard y panel bursatil;

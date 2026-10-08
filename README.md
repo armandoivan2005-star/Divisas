@@ -1,6 +1,6 @@
 # Financias Web (Django + Tailwind)
 
-Proyecto web con autenticacion, roles (`ADMINISTRADOR` y `NORMAL`), rutas protegidas, manejo de sesiones, validaciones y trazabilidad de eventos de seguridad.
+Proyecto web con autenticacion, roles (`ADMINISTRADOR`, `SUPERVISOR` y `NORMAL`), rutas protegidas, manejo de sesiones, validaciones y trazabilidad de eventos de seguridad.
 
 ## Funcionalidades principales
 
@@ -9,6 +9,7 @@ Proyecto web con autenticacion, roles (`ADMINISTRADOR` y `NORMAL`), rutas proteg
 - Mapa del sitio.
 - Pagina 404 personalizada.
 - Paginas de Inicio, Login, Registro y Dashboard (protegido).
+- Acceso de supervisor al dashboard y consultas en modo estrictamente de solo lectura.
 - Consumo de datos externos (Frankfurter y Yahoo Finance, con TwelveData como respaldo opcional).
 - Validaciones frontend y backend.
 - Registro de logs de acceso, login y errores.

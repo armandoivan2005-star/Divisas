@@ -24,7 +24,7 @@
         {% if user.is_authenticated %}
             <div class="flex items-center gap-3">
             <a href="{% url 'site_map' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Mapa del sitio</a>
-            {% if user.is_staff %}
+            {% if can_access_dashboard %}
             <a href="{% url 'admin_dashboard' %}" class="rounded-lg border border-brand-500/40 px-3 py-2 text-sm text-brand-100 hover:bg-brand-500/20">Dashboard</a>
             {% endif %}
             <span class="rounded-full border border-brand-500/50 bg-brand-500/20 px-3 py-1 text-sm">Usuario: {{ user.username }}</span>
@@ -88,21 +88,19 @@
         <div class="mt-5 space-y-3 rounded-lg border border-white/10 bg-slate-900/50 p-3 text-sm">
             <p><span class="text-slate-400">Usuario:</span> <span class="font-semibold text-white">{{ user.username }}</span></p>
             <p><span class="text-slate-400">Email:</span> <span class="text-slate-200">{{ user.email|default:"-" }}</span></p>
-            {% if user.is_staff %}
-            <p><span class="text-slate-400">Rol:</span> <span class="text-slate-200">{% if user.is_staff %}ADMINISTRADOR{% else %}NORMAL{% endif %}</span></p>
-            {% endif %}
+            <p><span class="text-slate-400">Rol:</span> <span class="text-slate-200">{{ current_user_role|default:"NORMAL" }}</span></p>
         </div>
         <div class="mt-5 space-y-2">
             <a href="{% url 'home' %}" class="block rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Ir al panel principal</a>
-            {% if user.is_staff %}
-            <a href="{% url 'admin_dashboard' %}" class="block rounded-lg border border-brand-500/40 px-3 py-2 text-sm text-brand-100 hover:bg-brand-500/20">Ir al dashboard admin</a>
+            {% if can_access_dashboard %}
+            <a href="{% url 'admin_dashboard' %}" class="block rounded-lg border border-brand-500/40 px-3 py-2 text-sm text-brand-100 hover:bg-brand-500/20">Ir al dashboard</a>
             {% endif %}
             <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}
                 <button type="submit" class="mt-2 w-full rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20">Cerrar sesion</button>
             </form>
         </div>
-        {% if user.is_staff %}
+        {% if is_application_admin %}
         <div class="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-3">
             <div class="flex items-center justify-between">
                 <h3 class="text-sm font-semibold text-white">Notificaciones</h3>
@@ -142,7 +140,7 @@
         </div>
         {% endif %}
 
-        {% if user.username|lower != 'armando' %}
+        {% if not is_supervisor and user.username|lower != 'armando' %}
         <form method="post" action="{% url 'delete_own_account' %}" class="mt-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3">
             {% csrf_token %}
             <p class="text-xs text-rose-200">Accion irreversible: elimina tu cuenta y cierra sesion.</p>
@@ -150,9 +148,13 @@
                 Eliminar mi cuenta
             </button>
         </form>
-        {% else %}
+        {% elif user.username|lower == 'armando' %}
         <p class="mt-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
             La cuenta armando no puede eliminarse desde este menu.
+        </p>
+        {% else %}
+        <p class="mt-6 rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+            Perfil SUPERVISOR: acceso de solo lectura.
         </p>
         {% endif %}
     </aside>

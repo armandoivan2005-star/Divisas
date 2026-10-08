@@ -14,7 +14,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 from django.core.mail import send_mail
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -26,10 +26,21 @@ from .models import (
     FavoriteCurrency,
     UserAlertNotification,
 )
+from .roles import (
+    ADMIN_ROLE,
+    NORMAL_ROLE,
+    ROLE_NAMES,
+    SUPERVISOR_ROLE,
+    apply_role_policy,
+    can_access_dashboard,
+    get_user_role,
+    is_admin_user,
+    is_primary_admin,
+    is_supervisor_user,
+    set_user_role,
+)
 
 
-ADMIN_ROLE = 'ADMINISTRADOR'
-NORMAL_ROLE = 'NORMAL'
 TWELVEDATA_BASE_URL = 'https://api.twelvedata.com/time_series'
 TWELVEDATA_SYMBOL_SEARCH_URL = 'https://api.twelvedata.com/symbol_search'
 YAHOO_FINANCE_CHART_URLS = (
@@ -143,47 +154,6 @@ class RestrictedAwareAuthenticationForm(AuthenticationForm):
         super().confirm_login_allowed(user)
 
 
-def set_user_role(user, role_name):
-    admin_group, _ = Group.objects.get_or_create(name=ADMIN_ROLE)
-    normal_group, _ = Group.objects.get_or_create(name=NORMAL_ROLE)
-
-    if role_name == ADMIN_ROLE:
-        user.groups.set([admin_group])
-        if not user.is_staff:
-            user.is_staff = True
-            user.save(update_fields=['is_staff'])
-        return ADMIN_ROLE
-
-    user.groups.set([normal_group])
-    if user.is_staff:
-        user.is_staff = False
-        user.save(update_fields=['is_staff'])
-    return NORMAL_ROLE
-
-
-def apply_role_policy(user, force_normal=False):
-    username = (user.username or '').strip().lower()
-    if username == 'armando':
-        return set_user_role(user, ADMIN_ROLE)
-    if force_normal:
-        return set_user_role(user, NORMAL_ROLE)
-    if user.groups.filter(name=ADMIN_ROLE).exists():
-        return set_user_role(user, ADMIN_ROLE)
-    if user.groups.filter(name=NORMAL_ROLE).exists():
-        return set_user_role(user, NORMAL_ROLE)
-    return set_user_role(user, NORMAL_ROLE)
-
-
-def is_admin_user(user):
-    if not user.is_authenticated:
-        return False
-    return apply_role_policy(user) == ADMIN_ROLE
-
-
-def is_primary_admin(user):
-    return user.is_authenticated and (user.username or '').strip().lower() == 'armando'
-
-
 def home(request):
     active_modal = request.GET.get('modal', '')
     next_url = request.GET.get('next') or request.POST.get('next') or ''
@@ -192,12 +162,15 @@ def home(request):
     user_role = None
     favorite_currency_codes = []
     user_exchange_alerts = []
+    supervisor_read_only = False
     if request.user.is_authenticated:
         user_role = apply_role_policy(request.user)
+        supervisor_read_only = user_role == SUPERVISOR_ROLE
         favorite_currency_codes = list(
             FavoriteCurrency.objects.filter(user=request.user).values_list('code', flat=True)
         )
-        evaluate_user_alerts(request.user)
+        if not supervisor_read_only:
+            evaluate_user_alerts(request.user)
         user_exchange_alerts = list(
             ExchangeAlert.objects.filter(user=request.user).order_by('-created_at')
         )
@@ -206,6 +179,12 @@ def home(request):
     signup_form = UserCreationForm(prefix='signup')
 
     if request.method == 'POST':
+        if supervisor_read_only:
+            return forbidden_response(
+                request,
+                'Los supervisores tienen acceso de solo lectura.',
+                event='supervisor_home_write',
+            )
         form_type = request.POST.get('form_type')
 
         if form_type == 'login':
@@ -255,6 +234,8 @@ def home(request):
         'next': next_url,
         'user_role': user_role,
         'is_admin_user': user_role == ADMIN_ROLE,
+        'can_access_dashboard': user_role in (ADMIN_ROLE, SUPERVISOR_ROLE),
+        'is_supervisor': supervisor_read_only,
         'favorite_currency_codes': favorite_currency_codes,
         'user_exchange_alerts': user_exchange_alerts,
         'restricted_login_username': restricted_login_username,
@@ -267,6 +248,12 @@ def home(request):
 def currency_favorite_toggle(request):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='favorite_toggle_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_favorite_write',
+        )
 
     payload = {}
     if request.content_type and 'application/json' in request.content_type:
@@ -361,6 +348,12 @@ def signup(request):
     form = UserCreationForm(request.POST or None)
 
     if request.method == 'POST':
+        if request.user.is_authenticated and is_supervisor_user(request.user):
+            return forbidden_response(
+                request,
+                'Los supervisores no pueden crear usuarios.',
+                event='supervisor_signup_write',
+            )
         if form.is_valid():
             user = form.save()
             apply_role_policy(user, force_normal=True)
@@ -565,6 +558,12 @@ def admin_notification_mark_all_read(request):
 def user_alert_create(request):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='user_alert_create_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_alert_create',
+        )
 
     base_currency = (request.POST.get('base_currency') or '').strip().upper()
     quote_currency = (request.POST.get('quote_currency') or '').strip().upper()
@@ -625,6 +624,12 @@ def user_alert_create(request):
 def user_alert_delete(request, alert_id):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='user_alert_delete_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_alert_delete',
+        )
 
     alert = get_object_or_404(ExchangeAlert, pk=alert_id, user=request.user)
     alert.is_active = False
@@ -638,6 +643,12 @@ def user_alert_delete(request, alert_id):
 def user_alert_check(request):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='user_alert_check_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_alert_check',
+        )
 
     result = evaluate_user_alerts(request.user)
     unread_count = UserAlertNotification.objects.filter(recipient=request.user, is_read=False).count()
@@ -655,6 +666,12 @@ def user_alert_check(request):
 def user_alert_notification_mark_read(request, notification_id):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='user_alert_notification_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_alert_notification_write',
+        )
 
     notification = get_object_or_404(
         UserAlertNotification,
@@ -671,6 +688,12 @@ def user_alert_notification_mark_read(request, notification_id):
 def user_alert_notification_mark_all_read(request):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='user_alert_notification_all_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_alert_notifications_write',
+        )
 
     UserAlertNotification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
     return redirect_back(request)
@@ -680,6 +703,12 @@ def user_alert_notification_mark_all_read(request):
 def delete_own_account(request):
     if request.method != 'POST':
         return forbidden_response(request, 'Metodo no permitido.', event='delete_own_account_method')
+    if is_supervisor_user(request.user):
+        return forbidden_response(
+            request,
+            'Los supervisores tienen acceso de solo lectura.',
+            event='supervisor_account_delete',
+        )
 
     current_user = request.user
     if (current_user.username or '').strip().lower() == 'armando':
@@ -985,21 +1014,24 @@ def build_symbol_candidates(raw_query, search_rows):
 
 @login_required
 def admin_dashboard(request):
-    if not is_admin_user(request.user):
-        return forbidden_response(request, 'Acceso solo para administradores.', event='admin_dashboard_access')
+    if not can_access_dashboard(request.user):
+        return forbidden_response(request, 'Acceso solo para administradores y supervisores.', event='admin_dashboard_access')
 
+    role_name = get_user_role(request.user)
     context = {
         'normal_count': User.objects.filter(groups__name=NORMAL_ROLE).count(),
         'admin_count': User.objects.filter(groups__name=ADMIN_ROLE).count(),
+        'supervisor_count': User.objects.filter(groups__name=SUPERVISOR_ROLE).count(),
         'is_primary_admin': is_primary_admin(request.user),
+        'is_supervisor': role_name == SUPERVISOR_ROLE,
     }
     return render(request, 'admin/dashboard.html', context)
 
 
 @login_required
 def admin_stocks_panel(request):
-    if not is_admin_user(request.user):
-        return forbidden_response(request, 'Acceso solo para administradores.', event='admin_stocks_access')
+    if not can_access_dashboard(request.user):
+        return forbidden_response(request, 'Acceso solo para administradores y supervisores.', event='admin_stocks_access')
 
     api_key = settings.TWELVEDATA_API_KEY
     raw_symbol = request.GET.get('symbol') or 'AAPL'
@@ -1125,19 +1157,26 @@ def admin_stocks_panel(request):
 
 @login_required
 def admin_users_by_role(request, role_name):
-    if not is_admin_user(request.user):
-        return forbidden_response(request, 'Acceso solo para administradores.', event='admin_users_access')
+    if not can_access_dashboard(request.user):
+        return forbidden_response(request, 'Acceso solo para administradores y supervisores.', event='admin_users_access')
 
-    if role_name not in (NORMAL_ROLE, ADMIN_ROLE):
+    if role_name not in ROLE_NAMES:
         return forbidden_response(request, 'Rol no valido.', event='admin_users_role')
 
     primary_admin = is_primary_admin(request.user)
+    supervisor_read_only = get_user_role(request.user) == SUPERVISOR_ROLE
     can_create = primary_admin
-    can_edit = role_name == NORMAL_ROLE or primary_admin
+    can_edit = not supervisor_read_only and (role_name == NORMAL_ROLE or primary_admin)
     can_delete = primary_admin
 
     create_form = DashboardUserCreateForm() if can_create else None
     if request.method == 'POST':
+        if supervisor_read_only:
+            return forbidden_response(
+                request,
+                'Los supervisores tienen acceso de solo lectura.',
+                event='supervisor_users_write',
+            )
         if not can_create:
             return forbidden_response(request, 'No tienes permisos para crear usuarios en esta seccion.', event='admin_users_create')
         create_form = DashboardUserCreateForm(request.POST)
@@ -1145,9 +1184,7 @@ def admin_users_by_role(request, role_name):
             user = create_form.save()
             set_user_role(user, role_name)
             messages.success(request, f'Usuario {user.username} creado en rol {role_name}.')
-            if role_name == NORMAL_ROLE:
-                return redirect('admin_users_normal')
-            return redirect('admin_users_admin')
+            return redirect_to_users_list_by_role(role_name)
 
     users = User.objects.filter(groups__name=role_name).order_by('username')
     context = {
@@ -1158,6 +1195,7 @@ def admin_users_by_role(request, role_name):
         'can_edit': can_edit,
         'can_delete': can_delete,
         'is_primary_admin': primary_admin,
+        'is_supervisor': supervisor_read_only,
     }
     return render(request, 'admin/users_list.html', context)
 
@@ -1172,9 +1210,16 @@ def admin_users_admin(request):
     return admin_users_by_role(request, ADMIN_ROLE)
 
 
+@login_required
+def admin_users_supervisor(request):
+    return admin_users_by_role(request, SUPERVISOR_ROLE)
+
+
 def redirect_to_users_list_by_role(role_name):
     if role_name == ADMIN_ROLE:
         return redirect('admin_users_admin')
+    if role_name == SUPERVISOR_ROLE:
+        return redirect('admin_users_supervisor')
     return redirect('admin_users_normal')
 
 
@@ -1185,11 +1230,15 @@ def admin_user_edit(request, user_id):
 
     target_user = get_object_or_404(User, pk=user_id)
     apply_role_policy(target_user)
-    role_name = ADMIN_ROLE if target_user.groups.filter(name=ADMIN_ROLE).exists() else NORMAL_ROLE
+    role_name = get_user_role(target_user)
     original_role = role_name
     primary_admin = is_primary_admin(request.user)
-    if role_name == ADMIN_ROLE and not primary_admin:
-        return forbidden_response(request, 'Solo armando puede editar administradores.', event='admin_user_edit_role')
+    if role_name in (ADMIN_ROLE, SUPERVISOR_ROLE) and not primary_admin:
+        return forbidden_response(
+            request,
+            'Solo armando puede editar administradores o supervisores.',
+            event='admin_user_edit_role',
+        )
     can_change_role = primary_admin and (target_user.username or '').strip().lower() != 'armando'
 
     if request.method == 'POST':
@@ -1199,16 +1248,12 @@ def admin_user_edit(request, user_id):
             selected_role = original_role
             if can_change_role:
                 requested_role = request.POST.get('role_name', original_role)
-                if requested_role in (ADMIN_ROLE, NORMAL_ROLE):
+                if requested_role in ROLE_NAMES:
                     selected_role = requested_role
 
-            if selected_role == ADMIN_ROLE:
-                set_user_role(target_user, ADMIN_ROLE)
-                messages.success(request, 'Usuario actualizado como administrador.')
-                return redirect('admin_users_admin')
-            set_user_role(target_user, NORMAL_ROLE)
-            messages.success(request, 'Usuario actualizado como normal.')
-            return redirect('admin_users_normal')
+            set_user_role(target_user, selected_role)
+            messages.success(request, f'Usuario actualizado como {selected_role.lower()}.')
+            return redirect_to_users_list_by_role(selected_role)
     else:
         form = DashboardUserUpdateForm(instance=target_user)
 
@@ -1221,7 +1266,7 @@ def admin_user_edit(request, user_id):
             'role_name': original_role,
             'can_change_role': can_change_role,
             'can_manage_restriction': is_primary_admin(request.user),
-            'role_options': [NORMAL_ROLE, ADMIN_ROLE],
+            'role_options': [NORMAL_ROLE, SUPERVISOR_ROLE, ADMIN_ROLE],
         },
     )
 
@@ -1237,7 +1282,7 @@ def admin_user_toggle_restriction(request, user_id):
 
     target_user = get_object_or_404(User, pk=user_id)
     apply_role_policy(target_user)
-    role_name = ADMIN_ROLE if target_user.groups.filter(name=ADMIN_ROLE).exists() else NORMAL_ROLE
+    role_name = get_user_role(target_user)
 
     if (target_user.username or '').strip().lower() == 'armando':
         messages.error(request, 'La cuenta armando no puede restringirse.')
@@ -1264,21 +1309,17 @@ def admin_user_delete(request, user_id):
 
     target_user = get_object_or_404(User, pk=user_id)
     apply_role_policy(target_user)
-    role_name = ADMIN_ROLE if target_user.groups.filter(name=ADMIN_ROLE).exists() else NORMAL_ROLE
+    role_name = get_user_role(target_user)
     if not is_primary_admin(request.user):
         return forbidden_response(request, 'Solo armando puede eliminar usuarios desde el dashboard.', event='admin_user_delete_role')
 
     if target_user == request.user:
         messages.error(request, 'No puedes eliminar tu propio usuario administrador.')
-        if role_name == ADMIN_ROLE:
-            return redirect('admin_users_admin')
-        return redirect('admin_users_normal')
+        return redirect_to_users_list_by_role(role_name)
 
     username = target_user.username
     target_user.delete()
     log_security_event(request, 'admin_user_delete', outcome='success', details=f'user={username}')
     messages.success(request, f'Usuario {username} eliminado.')
 
-    if role_name == ADMIN_ROLE:
-        return redirect('admin_users_admin')
-    return redirect('admin_users_normal')
+    return redirect_to_users_list_by_role(role_name)

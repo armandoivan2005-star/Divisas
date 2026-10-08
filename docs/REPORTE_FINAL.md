@@ -22,7 +22,7 @@ El objetivo fue cubrir requerimientos funcionales y de seguridad, incorporando c
 - Autenticacion basada en Django.
 - Proteccion de rutas con `@login_required` y validacion de rol.
 - Manejo de sesion con middleware de autenticacion.
-- Roles `ADMINISTRADOR` y `NORMAL`.
+- Roles `ADMINISTRADOR`, `SUPERVISOR` y `NORMAL`.
 - Sanitizacion y validacion de inputs.
 - Manejo controlado de errores con vistas 403/404/500.
 - Logging de accesos, errores y eventos de login.
@@ -47,6 +47,7 @@ El objetivo fue cubrir requerimientos funcionales y de seguridad, incorporando c
 ### Roles
 
 - `NORMAL`: uso de funciones de usuario final.
+- `SUPERVISOR`: acceso de solo lectura al dashboard, consultas y listados.
 - `ADMINISTRADOR`: acceso a dashboard, panel de acciones y administracion de usuarios.
 
 ## 4. Desarrollo (tecnologias y componentes)
