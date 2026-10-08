@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}CRUD {{ role_name }}{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold text-white">CRUD de {{ role_name }}</h1>
+        <a href="{% url 'admin_dashboard' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Volver al dashboard</a>
+    </div>
+
+    {% if can_create %}
+        <form method="post" autocomplete="off" class="admin-create-form mt-6 rounded-xl border border-white/10 bg-slate-900/40 p-4">
+            {% csrf_token %}
+            <input type="text" name="fake_username" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true">
+            <input type="password" name="fake_password" autocomplete="new-password" class="hidden" tabindex="-1" aria-hidden="true">
+            <h2 class="text-lg font-semibold text-white">Crear usuario {{ role_name|lower }}</h2>
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                {{ create_form.as_p }}
+            </div>
+            <button type="submit" class="mt-3 rounded-lg bg-brand-500 px-4 py-2 font-semibold text-slate-950 hover:bg-brand-100">
+                Crear usuario
+            </button>
+        </form>
+    {% else %}
+        <p class="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Modo lectura para administradores secundarios en esta seccion.
+        </p>
+    {% endif %}
+
+    <div class="mt-6 overflow-hidden rounded-xl border border-white/10">
+        <table class="min-w-full divide-y divide-white/10 text-left text-sm">
+            <thead class="bg-slate-800/70 text-slate-200">
+                <tr>
+                    <th class="px-4 py-3">ID</th>
+                    <th class="px-4 py-3">Usuario</th>
+                    <th class="px-4 py-3">Email</th>
+                    <th class="px-4 py-3">Activo</th>
+                    <th class="px-4 py-3">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 bg-slate-900/50">
+                {% for u in users %}
+                <tr>
+                    <td class="px-4 py-3 text-slate-200">{{ u.id }}</td>
+                    <td class="px-4 py-3 font-semibold text-white">{{ u.username }}</td>
+                    <td class="px-4 py-3 text-slate-300">{{ u.email|default:"-" }}</td>
+                    <td class="px-4 py-3 text-slate-300">
+                        {% if u.is_active %}
+                            <span class="text-emerald-300">Activo</span>
+                        {% else %}
+                            <span class="text-rose-300">Restringido</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex gap-2">
+                            {% if can_edit %}
+                                <a href="{% url 'admin_user_edit' u.id %}" class="rounded-md border border-white/20 px-3 py-1 hover:bg-white/10">Editar</a>
+                            {% endif %}
+                            {% if is_primary_admin and u.username|lower != 'armando' %}
+                                <form method="post" action="{% url 'admin_user_toggle_restriction' u.id %}">
+                                    {% csrf_token %}
+                                    {% if u.is_active %}
+                                    <button type="submit" class="rounded-md border border-rose-500/40 px-3 py-1 text-rose-200 hover:bg-rose-500/20">
+                                        Restringir
+                                    </button>
+                                    {% else %}
+                                    <button type="submit" class="rounded-md border border-emerald-500/40 px-3 py-1 text-emerald-200 hover:bg-emerald-500/20">
+                                        Reactivar
+                                    </button>
+                                    {% endif %}
+                                </form>
+                            {% endif %}
+                            {% if can_delete %}
+                                <form method="post" action="{% url 'admin_user_delete' u.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="rounded-md border border-rose-500/40 px-3 py-1 text-rose-200 hover:bg-rose-500/20">
+                                        Eliminar
+                                    </button>
+                                </form>
+                            {% endif %}
+                            {% if not can_edit and not can_delete %}
+                                <span class="text-xs text-slate-400">Solo lectura</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-4 py-4 text-slate-300">No hay usuarios en este rol.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var form = document.querySelector('.admin-create-form');
+        if (!form) return;
+        var inputs = form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+        inputs.forEach(function (input) {
+            if (input.name === 'fake_username' || input.name === 'fake_password') return;
+            input.value = '';
+            input.setAttribute('autocomplete', input.type === 'password' ? 'new-password' : 'off');
+            input.setAttribute('autocapitalize', 'none');
+            input.setAttribute('spellcheck', 'false');
+        });
+    });
+</script>
+{% endblock %}

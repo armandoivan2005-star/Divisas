@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Mapa del sitio{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
+    <h1 class="text-2xl font-bold text-white">Mapa del sitio</h1>
+    <p class="mt-2 text-sm text-slate-300">Vista general de la navegacion principal y secciones protegidas.</p>
+
+    <div class="mt-5 grid gap-4 md:grid-cols-2">
+        <div class="rounded-xl border border-white/10 bg-slate-900/40 p-4">
+            <h2 class="text-lg font-semibold text-white">Publico</h2>
+            <ul class="mt-3 space-y-2 text-sm text-slate-300">
+                <li><a href="{% url 'home' %}" class="hover:text-white">Inicio</a></li>
+                <li><a href="{% url 'login' %}" class="hover:text-white">Login</a></li>
+                <li><a href="{% url 'signup' %}" class="hover:text-white">Registro</a></li>
+                <li><a href="{% url 'site_map' %}" class="hover:text-white">Mapa del sitio</a></li>
+            </ul>
+        </div>
+
+        <div class="rounded-xl border border-white/10 bg-slate-900/40 p-4">
+            <h2 class="text-lg font-semibold text-white">Protegido (Admin)</h2>
+            <ul class="mt-3 space-y-2 text-sm text-slate-300">
+                <li><a href="{% url 'admin_dashboard' %}" class="hover:text-white">Dashboard</a></li>
+                <li><a href="{% url 'admin_stocks_panel' %}" class="hover:text-white">Dashboard acciones</a></li>
+                <li><a href="{% url 'admin_users_normal' %}" class="hover:text-white">Usuarios normales</a></li>
+                <li><a href="{% url 'admin_users_admin' %}" class="hover:text-white">Usuarios administradores</a></li>
+            </ul>
+        </div>
+    </div>
+</section>
+{% endblock %}

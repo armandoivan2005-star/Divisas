@@ -1,0 +1,1090 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
+    <h1 class="text-3xl font-bold tracking-tight text-white">Panel financiero</h1>
+    <p class="mt-2 text-slate-300">Referencia de divisas obtenida desde Frankfurter.</p>
+    <p class="mt-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+        La informacion se consulta directamente desde la API de Frankfurter, que publica tipos de cambio basados en datos oficiales del Banco Central Europeo.
+        Se considera informacion en tiempo real para este panel porque cada consulta trae el ultimo dato disponible del servicio al momento de cargar o actualizar la pagina.
+    </p>
+
+    <p id="fx-meta" class="mt-6 rounded-xl border border-brand-500/40 bg-brand-500/10 px-4 py-3 text-sm text-brand-100">Cargando tasas...</p>
+    <p id="fx-last-update" class="mt-2 text-xs text-slate-400">Ultima actualizacion de divisas: pendiente...</p>
+    <p id="fx-error" class="mt-6 hidden rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">No fue posible cargar las tasas en este momento.</p>
+    <p class="mt-4 rounded-lg border border-slate-600/40 bg-slate-800/40 px-3 py-2 text-sm text-slate-300">
+        Esta tabla muestra cuanto vale el monto seleccionado en cada divisa con respecto a la moneda base. La columna de cambio aproximado a 2 semanas indica variacion porcentual:
+        los numeros en verde representan una subida (valor positivo) y los numeros en rojo representan una caida (valor negativo).
+    </p>
+
+    <div class="mt-5 max-h-96 overflow-auto rounded-xl border border-white/10">
+        <table id="fx-table" class="hidden min-w-full divide-y divide-white/10 text-left text-sm">
+            <thead class="sticky top-0 z-10 bg-slate-800/90 text-slate-200 backdrop-blur">
+                <tr>
+                    <th class="px-4 py-3">Divisa</th>
+                    <th class="px-4 py-3">Pais</th>
+                    <th id="fx-value-header" class="px-4 py-3">Valor</th>
+                    <th class="px-4 py-3">Cambio aprox. 2 semanas (%)</th>
+                </tr>
+            </thead>
+            <tbody id="fx-body" class="divide-y divide-white/5 bg-slate-900/50"></tbody>
+        </table>
+    </div>
+
+    {% if user.is_authenticated %}
+    <dialog id="alert-modal" class="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900 p-6 text-slate-100 shadow-2xl backdrop:bg-black/60">
+        <h2 class="text-xl font-semibold text-cyan-100">Crear alerta</h2>
+        <p class="mt-2 text-sm text-slate-300">Configura el par y la condicion para recibir notificacion.</p>
+        <form method="post" action="{% url 'user_alert_create' %}" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <div>
+                <label for="alert-base-currency" class="block text-sm text-slate-300">Moneda base</label>
+                <input id="alert-base-currency" name="base_currency" type="text" maxlength="3" placeholder="USD" required>
+            </div>
+            <div>
+                <label for="alert-quote-currency" class="block text-sm text-slate-300">Moneda objetivo</label>
+                <input id="alert-quote-currency" name="quote_currency" type="text" maxlength="3" placeholder="MXN" required>
+            </div>
+            <div>
+                <label for="alert-condition" class="block text-sm text-slate-300">Condicion</label>
+                <select id="alert-condition" name="condition" required>
+                    <option value="above">Por encima de</option>
+                    <option value="below">Por debajo de</option>
+                </select>
+            </div>
+            <div>
+                <label for="alert-target-rate" class="block text-sm text-slate-300">Tasa objetivo</label>
+                <input id="alert-target-rate" name="target_rate" type="number" min="0.000001" step="0.000001" placeholder="19.500000" required>
+            </div>
+            <button type="submit" class="w-full rounded-lg border border-cyan-500/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/30">
+                Crear alerta
+            </button>
+        </form>
+        <button id="close-alert-modal" type="button" class="mt-3 w-full rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Cerrar</button>
+    </dialog>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    {{ favorite_currency_codes|json_script:"favorite-currencies-data" }}
+    {% endif %}
+
+    {% if user.is_authenticated %}
+    <div class="mx-auto mt-6 w-full max-w-4xl rounded-xl border border-white/10 bg-slate-900/40 p-4">
+        <h3 class="text-sm font-semibold text-slate-200">Tendencia de divisas (ultimos 14 dias)</h3>
+        <div class="mt-3 rounded-lg border border-white/10 bg-slate-900/60 p-3">
+            <p class="text-xs text-slate-300">Filtros de graficas (aplican a tendencia e historico anual)</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+                <button id="fx-chart-favorites-only" type="button" class="rounded-lg border border-brand-500/40 bg-brand-500/10 px-3 py-2 text-xs text-brand-100 hover:bg-brand-500/20">
+                    Solo favoritas: OFF
+                </button>
+                <button id="fx-chart-select-all" type="button" class="rounded-lg border border-white/20 px-3 py-2 text-xs text-slate-200 hover:bg-white/10">
+                    Seleccionar todas
+                </button>
+                <button id="fx-chart-clear" type="button" class="rounded-lg border border-white/20 px-3 py-2 text-xs text-slate-200 hover:bg-white/10">
+                    Limpiar
+                </button>
+            </div>
+            <p id="fx-chart-filters-meta" class="mt-2 text-xs text-slate-400">Selecciona monedas para mostrar en las graficas.</p>
+            <div id="fx-chart-filters" class="mt-3 max-h-40 overflow-auto rounded-lg border border-white/10 bg-slate-950/60 p-2"></div>
+        </div>
+        <div class="mt-4 h-64 w-full">
+            <canvas id="fx-chart" class="h-full w-full"></canvas>
+        </div>
+        <p class="mt-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+            Esta grafica muestra la evolucion diaria del tipo de cambio de cada divisa respecto a la moneda base elegida.
+            Los picos al alza indican fortalecimiento relativo de la divisa frente a la base; los descensos indican debilitamiento.
+        </p>
+    </div>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+        <div class="mx-auto mt-6 w-full max-w-4xl rounded-xl border border-white/10 bg-slate-900/40 p-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-200">Historico anual de divisas</h3>
+                    <p class="mt-1 text-xs text-slate-400">Consulta variacion por año para la moneda base seleccionada.</p>
+                </div>
+                <div class="w-full max-w-xs">
+                    <label for="fx-year" class="block text-sm text-slate-300">Año</label>
+                    <select id="fx-year" class="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/40"></select>
+                </div>
+            </div>
+            <p id="fx-historical-meta" class="mt-4 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-xs text-brand-100">Cargando historico...</p>
+            <div class="mt-4 h-64 w-full">
+                <canvas id="fx-historical-chart" class="h-full w-full"></canvas>
+            </div>
+            <div id="fx-historical-summary" class="mt-4 grid gap-2 sm:grid-cols-2"></div>
+        </div>
+
+        <p class="mt-6 text-sm text-emerald-300">Sesion activa como: {{ user.username }}</p>
+        {% if is_admin_user %}
+        <p class="mt-2 text-sm text-slate-300">Rol asignado: <span class="font-semibold text-white">{{ user_role }}</span></p>
+        <a href="{% url 'admin_dashboard' %}" class="mt-3 inline-block rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-brand-100">
+            Ir al dashboard administrador
+        </a>
+        {% endif %}
+    {% else %}
+        <p class="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Inicia sesion para ver la explicacion detallada de la grafica y contenido exclusivo para usuarios registrados.
+        </p>
+        <div class="mx-auto mt-6 w-full max-w-4xl rounded-xl border border-white/10 bg-slate-900/40 p-4">
+            <h3 class="text-lg font-semibold text-white">Guia basica del mercado</h3>
+            <p class="mt-2 text-sm text-slate-300">
+                Antes de operar, conviene entender algunos conceptos clave para interpretar correctamente las tablas y graficas.
+            </p>
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Tipo de cambio</p>
+                    <p class="mt-1 text-sm text-slate-300">Precio de una moneda frente a otra (ejemplo: cuantos MXN equivale 1 USD).</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Divisa base</p>
+                    <p class="mt-1 text-sm text-slate-300">Moneda de referencia desde la que comparas todas las demas.</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Acciones</p>
+                    <p class="mt-1 text-sm text-slate-300">Participaciones de una empresa. Su precio sube o baja segun oferta, demanda y resultados.</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Alta y baja</p>
+                    <p class="mt-1 text-sm text-slate-300">Maximo y minimo del precio en un periodo. Sirven para medir rangos de movimiento.</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Volatilidad</p>
+                    <p class="mt-1 text-sm text-slate-300">Magnitud de cambios en precios. Alta volatilidad implica mayor riesgo y oportunidad.</p>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-slate-900/50 p-3">
+                    <p class="font-semibold text-brand-100">Spread</p>
+                    <p class="mt-1 text-sm text-slate-300">Diferencia entre precio de compra y venta. Puede impactar tu costo real de entrada/salida.</p>
+                </div>
+            </div>
+            <p class="mt-4 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
+                Nota: esta plataforma muestra datos para analisis educativo. No constituye asesoria financiera ni garantia de rendimiento.
+            </p>
+        </div>
+
+        <dialog id="login-modal" class="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 text-slate-100 shadow-2xl backdrop:bg-black/60">
+            <h2 class="text-xl font-semibold text-white">Iniciar sesion</h2>
+            {% if login_form.non_field_errors %}
+                <div class="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{{ login_form.non_field_errors }}</div>
+            {% endif %}
+            <form method="post" class="mt-4 space-y-3">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="login">
+                {% if next %}
+                    <input type="hidden" name="next" value="{{ next }}">
+                {% endif %}
+                {{ login_form.as_p }}
+                <button type="submit" class="w-full rounded-lg bg-brand-500 px-4 py-2 font-semibold text-slate-950 hover:bg-brand-100">Entrar</button>
+            </form>
+            <p class="mt-4 text-sm text-slate-300">No tienes cuenta? <a href="{% url 'signup' %}" id="switch-to-signup" class="text-brand-100 underline">Registrate</a></p>
+            <button type="button" id="close-login-modal" class="mt-3 rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Cerrar</button>
+        </dialog>
+
+        <dialog id="signup-modal" class="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 text-slate-100 shadow-2xl backdrop:bg-black/60">
+            <h2 class="text-xl font-semibold text-white">Crear cuenta</h2>
+            <form method="post" class="mt-4 space-y-3">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="signup">
+                {% if next %}
+                    <input type="hidden" name="next" value="{{ next }}">
+                {% endif %}
+                {{ signup_form.as_p }}
+                <button type="submit" class="w-full rounded-lg bg-brand-500 px-4 py-2 font-semibold text-slate-950 hover:bg-brand-100">Registrarme</button>
+            </form>
+            <p class="mt-4 text-sm text-slate-300">Ya tienes cuenta? <a href="{% url 'login' %}" id="switch-to-login" class="text-brand-100 underline">Inicia sesion</a></p>
+            <button type="button" id="close-signup-modal" class="mt-3 rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Cerrar</button>
+        </dialog>
+
+        <dialog id="restricted-modal" class="w-full max-w-md rounded-2xl border border-rose-500/30 bg-slate-900 p-6 text-slate-100 shadow-2xl backdrop:bg-black/60">
+            <h2 class="text-xl font-semibold text-rose-200">Acceso restringido</h2>
+            <p class="mt-3 text-sm text-slate-200">
+                Usuario: <span class="font-semibold text-white">{{ restricted_login_username|default:"-" }}</span>
+            </p>
+            <p class="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                {{ restricted_login_message|default:"Esta cuenta fue restringida por uso indebido, favor de contactar a un administrador." }}
+            </p>
+            <div class="mt-4 flex gap-2">
+                <button type="button" id="open-login-from-restricted" class="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-brand-100">
+                    Volver a iniciar sesion
+                </button>
+                <button type="button" id="close-restricted-modal" class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/10">
+                    Cerrar
+                </button>
+            </div>
+        </dialog>
+    {% endif %}
+</section>
+
+<div id="js-auth-state" data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}" data-username="{% if user.is_authenticated %}{{ user.username|lower }}{% else %}anon{% endif %}" hidden></div>
+<div id="js-modal-state" data-active-modal="{{ active_modal|default:'' }}" hidden></div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var apiBases = ['https://api.frankfurter.app', 'https://api.frankfurter.dev/v1'];
+        var authState = document.getElementById('js-auth-state');
+        var isAuthenticated = authState ? authState.dataset.authenticated === '1' : false;
+        var authUsername = authState ? (authState.dataset.username || 'anon') : 'anon';
+        var publicCurrencies = ['USD', 'EUR', 'MXN', 'GBP', 'JPY'];
+        var allCurrencies = [];
+        var currencyNames = {};
+        var currencyCountry = {
+            USD: 'Estados Unidos',
+            MXN: 'Mexico',
+            EUR: 'Union Europea',
+            GBP: 'Reino Unido',
+            JPY: 'Japon',
+            CAD: 'Canada',
+            CHF: 'Suiza',
+            AUD: 'Australia',
+            NZD: 'Nueva Zelanda',
+            CNY: 'China',
+            BGN: 'Bulgaria',
+            CZK: 'Republica Checa',
+            SEK: 'Suecia',
+            NOK: 'Noruega',
+            DKK: 'Dinamarca',
+            BRL: 'Brasil',
+            ARS: 'Argentina',
+            HKD: 'Hong Kong',
+            HUF: 'Hungria',
+            IDR: 'Indonesia',
+            ILS: 'Israel',
+            INR: 'India',
+            ISK: 'Islandia',
+            KRW: 'Corea del Sur',
+            MYR: 'Malasia',
+            PHP: 'Filipinas',
+            PLN: 'Polonia',
+            RON: 'Rumania',
+            SGD: 'Singapur',
+            THB: 'Tailandia',
+            TRY: 'Turquia',
+            ZAR: 'Sudafrica'
+        };
+
+        var selectedBase = 'USD';
+        var amount = 100;
+        var baseRates = {};
+        var trendByCode = {};
+        var fxChart = null;
+        var historicalChart = null;
+
+        var meta = document.getElementById('fx-meta');
+        var lastUpdate = document.getElementById('fx-last-update');
+        var error = document.getElementById('fx-error');
+        var table = document.getElementById('fx-table');
+        var tbody = document.getElementById('fx-body');
+        var valueHeader = document.getElementById('fx-value-header');
+        var chartCanvas = document.getElementById('fx-chart');
+        var historicalCanvas = document.getElementById('fx-historical-chart');
+        var historicalMeta = document.getElementById('fx-historical-meta');
+        var historicalSummary = document.getElementById('fx-historical-summary');
+        var yearInput = document.getElementById('fx-year');
+        var favoriteSelect = document.getElementById('fx-favorite-select');
+        var favoriteAddBtn = document.getElementById('fx-favorite-add');
+        var favoritesHint = document.getElementById('fx-favorites-hint');
+        var favoritesList = document.getElementById('fx-favorites-list');
+        var favoriteDataNode = document.getElementById('favorite-currencies-data');
+        var chartFiltersWrap = document.getElementById('fx-chart-filters');
+        var chartFiltersMeta = document.getElementById('fx-chart-filters-meta');
+        var chartFavoritesOnlyBtn = document.getElementById('fx-chart-favorites-only');
+        var chartSelectAllBtn = document.getElementById('fx-chart-select-all');
+        var chartClearBtn = document.getElementById('fx-chart-clear');
+        var favoriteCurrencies = new Set();
+        var selectedChartCurrencies = new Set();
+        var chartSelectionInitialized = false;
+        var favoritesOnlyInCharts = false;
+        var chartStorageKey = 'fx_chart_filters_' + authUsername;
+
+        if (favoriteDataNode) {
+            try {
+                JSON.parse(favoriteDataNode.textContent || '[]').forEach(function (code) {
+                    if (typeof code === 'string' && code.length === 3) {
+                        favoriteCurrencies.add(code.toUpperCase());
+                    }
+                });
+            } catch (e) {
+            }
+        }
+
+        var amountWrap = document.createElement('div');
+        amountWrap.className = 'mt-4 flex flex-wrap items-end gap-3';
+        amountWrap.innerHTML =
+            '<div class="w-full max-w-xs">' +
+            '<label for="fx-base" class="block text-sm text-slate-300">Moneda base</label>' +
+            '<select id="fx-base" class="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/40"></select>' +
+            '</div>' +
+            '<div class="w-full max-w-xs">' +
+            '<label for="fx-amount" class="block text-sm text-slate-300">Monto</label>' +
+            '<input id="fx-amount" type="number" min="0" step="0.01" value="100" class="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/40">' +
+            '</div>' +
+            '<div class="w-full max-w-xs">' +
+            '<label for="fx-search" class="block text-sm text-slate-300">Buscar divisa</label>' +
+            '<input id="fx-search" type="search" placeholder="Ej. USD, Mexico, Euro" class="mt-1 w-full rounded-lg border border-slate-600 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/40">' +
+            '</div>';
+        meta.insertAdjacentElement('afterend', amountWrap);
+
+        var baseInput = document.getElementById('fx-base');
+        var amountInput = document.getElementById('fx-amount');
+        var searchInput = document.getElementById('fx-search');
+        var formatter = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+        function populateBaseOptions() {
+            if (!baseInput) return;
+            baseInput.innerHTML = '';
+            allCurrencies.forEach(function (code) {
+                var option = document.createElement('option');
+                option.value = code;
+                option.textContent = code + (currencyNames[code] ? ' - ' + currencyNames[code] : '');
+                baseInput.appendChild(option);
+            });
+            if (allCurrencies.indexOf(selectedBase) === -1) {
+                selectedBase = allCurrencies.indexOf('USD') !== -1 ? 'USD' : (allCurrencies[0] || 'EUR');
+            }
+            baseInput.value = selectedBase;
+        }
+
+        function populateFavoriteOptions() {
+            if (!favoriteSelect) return;
+            favoriteSelect.innerHTML = '';
+            allCurrencies.forEach(function (code) {
+                var option = document.createElement('option');
+                option.value = code;
+                option.textContent = code + (currencyNames[code] ? ' - ' + currencyNames[code] : '');
+                favoriteSelect.appendChild(option);
+            });
+        }
+
+        function renderFavorites() {
+            if (!favoritesList || !favoritesHint) return;
+            favoritesList.innerHTML = '';
+
+            var sorted = Array.from(favoriteCurrencies).sort();
+            if (!sorted.length) {
+                favoritesHint.classList.remove('hidden');
+                return;
+            }
+
+            favoritesHint.classList.add('hidden');
+            sorted.forEach(function (code) {
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'rounded-full border border-brand-500/40 bg-brand-500/10 px-3 py-1 text-xs text-brand-100 hover:bg-brand-500/20';
+                item.setAttribute('data-fx-favorite-remove', code);
+                item.textContent = code + ' x';
+                favoritesList.appendChild(item);
+            });
+        }
+
+        function getAvailableChartCurrencies() {
+            return allCurrencies.filter(function (code) {
+                return code !== selectedBase;
+            });
+        }
+
+        function ensureChartSelection() {
+            if (chartSelectionInitialized) return;
+            chartSelectionInitialized = true;
+            loadChartFiltersState();
+            var available = getAvailableChartCurrencies();
+            selectedChartCurrencies = new Set(
+                Array.from(selectedChartCurrencies).filter(function (code) {
+                    return available.indexOf(code) !== -1;
+                })
+            );
+            if (!selectedChartCurrencies.size) {
+                var defaults = available.filter(function (code) {
+                    return favoriteCurrencies.has(code);
+                });
+                if (!defaults.length) {
+                    defaults = available.slice(0, 8);
+                }
+                defaults.forEach(function (code) {
+                    selectedChartCurrencies.add(code);
+                });
+            }
+            saveChartFiltersState();
+        }
+
+        function getActiveChartTargets() {
+            var available = getAvailableChartCurrencies();
+            var selected = available.filter(function (code) {
+                return selectedChartCurrencies.has(code);
+            });
+            if (favoritesOnlyInCharts) {
+                selected = selected.filter(function (code) {
+                    return favoriteCurrencies.has(code);
+                });
+            }
+            return selected;
+        }
+
+        function updateChartFavoritesButton() {
+            if (!chartFavoritesOnlyBtn) return;
+            chartFavoritesOnlyBtn.textContent = 'Solo favoritas: ' + (favoritesOnlyInCharts ? 'ON' : 'OFF');
+            chartFavoritesOnlyBtn.className = favoritesOnlyInCharts
+                ? 'rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-2 text-xs text-emerald-100 hover:bg-emerald-500/30'
+                : 'rounded-lg border border-brand-500/40 bg-brand-500/10 px-3 py-2 text-xs text-brand-100 hover:bg-brand-500/20';
+        }
+
+        function renderChartFilters() {
+            if (!chartFiltersWrap) return;
+
+            var available = getAvailableChartCurrencies();
+            var html = '';
+            available.forEach(function (code) {
+                var checked = selectedChartCurrencies.has(code) ? 'checked' : '';
+                var isFavorite = favoriteCurrencies.has(code);
+                var favoriteBadge = isFavorite ? '<span class="ml-1 text-[10px] text-brand-200">fav</span>' : '';
+                html +=
+                    '<label class="mb-2 mr-2 inline-flex cursor-pointer items-center rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 hover:bg-white/5">' +
+                    '<input type="checkbox" data-chart-currency="' + code + '" class="mr-2 h-3 w-3" ' + checked + '>' +
+                    '<span>' + code + '</span>' + favoriteBadge +
+                    '</label>';
+            });
+            chartFiltersWrap.innerHTML = html;
+
+            if (chartFiltersMeta) {
+                var selectedCount = getActiveChartTargets().length;
+                chartFiltersMeta.textContent = 'Monedas seleccionadas para graficas: ' + selectedCount + ' de ' + available.length + '.';
+            }
+            updateChartFavoritesButton();
+        }
+
+        function saveChartFiltersState() {
+            try {
+                localStorage.setItem(
+                    chartStorageKey,
+                    JSON.stringify({
+                        selected: Array.from(selectedChartCurrencies),
+                        favoritesOnly: favoritesOnlyInCharts ? 1 : 0
+                    })
+                );
+            } catch (e) {
+            }
+        }
+
+        function loadChartFiltersState() {
+            try {
+                var raw = localStorage.getItem(chartStorageKey);
+                if (!raw) return;
+                var data = JSON.parse(raw);
+                if (Array.isArray(data.selected)) {
+                    selectedChartCurrencies = new Set(
+                        data.selected
+                            .filter(function (code) { return typeof code === 'string'; })
+                            .map(function (code) { return code.toUpperCase(); })
+                    );
+                }
+                favoritesOnlyInCharts = data.favoritesOnly === 1 || data.favoritesOnly === true;
+            } catch (e) {
+            }
+        }
+
+        function getCsrfToken() {
+            var name = 'csrftoken=';
+            var cookies = document.cookie ? document.cookie.split(';') : [];
+            for (var i = 0; i < cookies.length; i++) {
+                var cookie = cookies[i].trim();
+                if (cookie.indexOf(name) === 0) {
+                    return decodeURIComponent(cookie.slice(name.length));
+                }
+            }
+            return '';
+        }
+
+        async function updateFavorite(code, action) {
+            var response = await fetch("{% url 'currency_favorite_toggle' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({ code: code, action: action })
+            });
+            if (!response.ok) {
+                throw new Error('No fue posible actualizar favoritos.');
+            }
+            var payload = await response.json();
+            if (!payload.ok) {
+                throw new Error(payload.error || 'No fue posible actualizar favoritos.');
+            }
+            favoriteCurrencies = new Set(payload.favorites || []);
+            renderFavorites();
+            renderChartFilters();
+            renderRates();
+            saveChartFiltersState();
+            if (isAuthenticated) {
+                loadFxData();
+            }
+        }
+
+        function populateYears() {
+            if (!yearInput) return;
+            var currentYear = new Date().getFullYear();
+            for (var year = currentYear; year >= 2000; year--) {
+                var option = document.createElement('option');
+                option.value = String(year);
+                option.textContent = String(year);
+                yearInput.appendChild(option);
+            }
+            yearInput.value = String(currentYear);
+        }
+
+        function buildUrl(base, path, params) {
+            return base + '/' + path + '?' + new URLSearchParams(params).toString();
+        }
+
+        async function fetchFromAnyBase(path, params) {
+            var lastError = null;
+            for (var i = 0; i < apiBases.length; i++) {
+                try {
+                    var response = await fetch(buildUrl(apiBases[i], path, params));
+                    if (!response.ok) {
+                        lastError = new Error('HTTP ' + response.status);
+                        continue;
+                    }
+                    return await response.json();
+                } catch (e) {
+                    lastError = e;
+                }
+            }
+            throw lastError || new Error('No se pudo cargar Frankfurter');
+        }
+
+        function renderRates() {
+            var parsed = parseFloat(amountInput.value);
+            amount = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+            valueHeader.textContent = 'Valor por ' + formatter.format(amount) + ' ' + selectedBase;
+            tbody.innerHTML = '';
+            var searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+            allCurrencies.forEach(function (code) {
+                if (code === selectedBase) return;
+                if (baseRates[code] === undefined) return;
+                var countryText = (currencyCountry[code] || currencyNames[code] || 'N/D');
+                if (searchTerm) {
+                    var haystack = (code + ' ' + countryText).toLowerCase();
+                    if (haystack.indexOf(searchTerm) === -1) return;
+                }
+
+                var converted = baseRates[code] * amount;
+                var trendValue = trendByCode[code] !== undefined ? trendByCode[code] : 'N/D';
+                var trendClass = 'text-slate-300';
+                if (trendByCode[code] !== undefined) {
+                    trendClass = Number(trendByCode[code]) >= 0 ? 'text-emerald-300' : 'text-rose-300';
+                }
+
+                var tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td class="px-4 py-3 font-semibold text-white">' + code + '</td>' +
+                    '<td class="px-4 py-3 text-slate-300">' + countryText + '</td>' +
+                    '<td class="px-4 py-3 text-slate-200">' + formatter.format(converted) + '</td>' +
+                    '<td class="px-4 py-3 ' + trendClass + '">' + trendValue + '</td>';
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function loadCurrencies() {
+            var data = await fetchFromAnyBase('currencies', {});
+            currencyNames = data || {};
+            var available = Object.keys(currencyNames).sort();
+            if (isAuthenticated) {
+                allCurrencies = available;
+            } else {
+                allCurrencies = publicCurrencies.filter(function (code) {
+                    return available.indexOf(code) !== -1;
+                });
+            }
+            populateBaseOptions();
+            populateFavoriteOptions();
+            renderFavorites();
+            ensureChartSelection();
+            renderChartFilters();
+        }
+
+        function renderTrendChart(dates, byDate, targets) {
+            if (!window.Chart || !chartCanvas) return;
+
+            var labels = dates.map(function (d) { return d.slice(5); });
+            var palette = ['#2dd4bf', '#38bdf8', '#a78bfa', '#f59e0b'];
+            var datasets = targets.map(function (code, index) {
+                return {
+                    label: code,
+                    data: dates.map(function (dateKey) {
+                        var ratesForDate = byDate[dateKey] || {};
+                        return ratesForDate[code] !== undefined ? ratesForDate[code] : null;
+                    }),
+                    borderColor: palette[index % palette.length],
+                    backgroundColor: palette[index % palette.length] + '33',
+                    borderWidth: 4,
+                    tension: 0,
+                    pointRadius: 3,
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: palette[index % palette.length],
+                    pointBorderWidth: 0,
+                    fill: false
+                };
+            });
+
+            if (fxChart) {
+                fxChart.destroy();
+            }
+
+            fxChart = new Chart(chartCanvas.getContext('2d'), {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1' } }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(148,163,184,0.15)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(148,163,184,0.15)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderHistoricalChart(dates, byDate, targets) {
+            if (!window.Chart || !historicalCanvas) return;
+
+            var labels = dates.map(function (d) { return d.slice(5); });
+            var palette = ['#22c55e', '#06b6d4', '#f59e0b', '#ef4444'];
+            var datasets = targets.map(function (code, index) {
+                return {
+                    label: code,
+                    data: dates.map(function (dateKey) {
+                        var ratesForDate = byDate[dateKey] || {};
+                        return ratesForDate[code] !== undefined ? ratesForDate[code] : null;
+                    }),
+                    borderColor: palette[index % palette.length],
+                    backgroundColor: palette[index % palette.length] + '22',
+                    borderWidth: 3,
+                    tension: 0,
+                    pointRadius: 1,
+                    fill: false
+                };
+            });
+
+            if (historicalChart) {
+                historicalChart.destroy();
+            }
+
+            historicalChart = new Chart(historicalCanvas.getContext('2d'), {
+                type: 'line',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#cbd5e1' } }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#94a3b8', maxTicksLimit: 12 },
+                            grid: { color: 'rgba(148,163,184,0.15)' }
+                        },
+                        y: {
+                            ticks: { color: '#94a3b8' },
+                            grid: { color: 'rgba(148,163,184,0.15)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadHistoricalData() {
+            if (!yearInput || !historicalMeta || !historicalSummary) return;
+            try {
+                var year = yearInput.value;
+                var startText = year + '-01-01';
+                var now = new Date();
+                var currentYear = String(now.getFullYear());
+                var endText = year === currentYear ? now.toISOString().slice(0, 10) : year + '-12-31';
+
+                var targets = getActiveChartTargets();
+                if (!targets.length) {
+                    if (historicalChart) {
+                        historicalChart.destroy();
+                        historicalChart = null;
+                    }
+                    historicalSummary.innerHTML = '';
+                    historicalMeta.textContent = 'Selecciona al menos una moneda para mostrar el historico anual.';
+                    return;
+                }
+
+                var series = await fetchFromAnyBase(startText + '..' + endText, {
+                    from: selectedBase,
+                    to: targets.join(',')
+                });
+
+                var byDate = series.rates || {};
+                var dates = Object.keys(byDate).sort();
+                renderHistoricalChart(dates, byDate, targets);
+
+                historicalSummary.innerHTML = '';
+                if (dates.length >= 2) {
+                    var first = byDate[dates[0]];
+                    var last = byDate[dates[dates.length - 1]];
+                    targets.forEach(function (code) {
+                        if (!first[code] || !last[code]) return;
+                        var pct = ((last[code] - first[code]) / first[code]) * 100;
+                        var className = pct >= 0 ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10' : 'text-rose-300 border-rose-500/30 bg-rose-500/10';
+                        var card = document.createElement('div');
+                        card.className = 'rounded-lg border px-3 py-2 text-sm ' + className;
+                        card.innerHTML = '<span class="font-semibold">' + code + '</span>: ' + pct.toFixed(2) + '% en ' + year;
+                        historicalSummary.appendChild(card);
+                    });
+                }
+
+                historicalMeta.textContent = 'Historico ' + year + ' con base ' + selectedBase + ' | Registros: ' + dates.length;
+            } catch (e) {
+                historicalMeta.textContent = 'No fue posible cargar el historico para el año seleccionado.';
+                historicalSummary.innerHTML = '';
+            }
+        }
+
+        async function loadFxData() {
+            try {
+                if (!allCurrencies.length) return;
+                selectedBase = baseInput.value;
+                selectedChartCurrencies.delete(selectedBase);
+                renderChartFilters();
+                saveChartFiltersState();
+
+                var allTargets = allCurrencies.filter(function (code) { return code !== selectedBase; });
+                var chartTargets = getActiveChartTargets();
+
+                var latest = await fetchFromAnyBase('latest', {
+                    amount: 1,
+                    from: selectedBase,
+                    to: allTargets.join(',')
+                });
+
+                var now = new Date();
+                var start = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+                var startText = start.toISOString().slice(0, 10);
+                var endText = now.toISOString().slice(0, 10);
+
+                var series = await fetchFromAnyBase(startText + '..' + endText, {
+                    from: selectedBase,
+                    to: allTargets.join(',')
+                });
+
+                var byDate = series.rates || {};
+                var dates = Object.keys(byDate).sort();
+                trendByCode = {};
+
+                if (dates.length >= 2) {
+                    var first = byDate[dates[0]];
+                    var last = byDate[dates[dates.length - 1]];
+                    allTargets.forEach(function (code) {
+                        if (first[code] && last[code]) {
+                            trendByCode[code] = (((last[code] - first[code]) / first[code]) * 100).toFixed(2);
+                        }
+                    });
+                }
+
+                baseRates = latest.rates || {};
+                var localUpdated = new Date().toLocaleString();
+                meta.textContent = 'Base: ' + selectedBase + ' | Fecha: ' + latest.date + ' | Actualizado: ' + new Date().toLocaleTimeString();
+                if (lastUpdate) {
+                    lastUpdate.textContent = 'Ultima actualizacion de divisas: ' + latest.date + ' (consulta local: ' + localUpdated + ')';
+                }
+                renderRates();
+                if (chartTargets.length) {
+                    renderTrendChart(dates, byDate, chartTargets);
+                } else if (fxChart) {
+                    fxChart.destroy();
+                    fxChart = null;
+                }
+                loadHistoricalData();
+
+                table.classList.remove('hidden');
+                error.classList.add('hidden');
+            } catch (e) {
+                meta.textContent = '';
+                if (lastUpdate) {
+                    lastUpdate.textContent = 'Ultima actualizacion de divisas: no disponible';
+                }
+                table.classList.add('hidden');
+                error.classList.remove('hidden');
+            }
+        }
+
+        loadCurrencies().then(loadFxData).catch(function () {
+            meta.textContent = '';
+            table.classList.add('hidden');
+            error.classList.remove('hidden');
+        });
+        populateYears();
+        amountInput.addEventListener('input', renderRates);
+        if (searchInput) {
+            searchInput.addEventListener('input', renderRates);
+        }
+        if (chartFavoritesOnlyBtn) {
+            chartFavoritesOnlyBtn.addEventListener('click', function () {
+                favoritesOnlyInCharts = !favoritesOnlyInCharts;
+                renderChartFilters();
+                saveChartFiltersState();
+                loadFxData();
+            });
+        }
+        if (chartSelectAllBtn) {
+            chartSelectAllBtn.addEventListener('click', function () {
+                selectedChartCurrencies = new Set(getAvailableChartCurrencies());
+                renderChartFilters();
+                saveChartFiltersState();
+                loadFxData();
+            });
+        }
+        if (chartClearBtn) {
+            chartClearBtn.addEventListener('click', function () {
+                selectedChartCurrencies = new Set();
+                renderChartFilters();
+                saveChartFiltersState();
+                loadFxData();
+            });
+        }
+        if (chartFiltersWrap) {
+            chartFiltersWrap.addEventListener('change', function (event) {
+                var input = event.target.closest('[data-chart-currency]');
+                if (!input) return;
+                var code = input.getAttribute('data-chart-currency');
+                if (!code) return;
+                if (input.checked) {
+                    selectedChartCurrencies.add(code);
+                } else {
+                    selectedChartCurrencies.delete(code);
+                }
+                renderChartFilters();
+                saveChartFiltersState();
+                loadFxData();
+            });
+        }
+        if (favoriteAddBtn && favoriteSelect) {
+            favoriteAddBtn.addEventListener('click', async function () {
+                if (!favoriteSelect.value) return;
+                try {
+                    await updateFavorite(favoriteSelect.value, 'add');
+                } catch (e) {
+                    alert('No fue posible agregar la moneda a favoritos.');
+                }
+            });
+        }
+        if (tbody) {
+            tbody.addEventListener('click', async function (event) {
+                var trigger = event.target.closest('[data-fx-favorite]');
+                if (!trigger) return;
+                var code = trigger.getAttribute('data-fx-favorite');
+                if (!code) return;
+                var action = favoriteCurrencies.has(code) ? 'remove' : 'add';
+                try {
+                    await updateFavorite(code, action);
+                } catch (e) {
+                    alert('No fue posible actualizar favoritos.');
+                }
+            });
+        }
+        if (favoritesList) {
+            favoritesList.addEventListener('click', async function (event) {
+                var trigger = event.target.closest('[data-fx-favorite-remove]');
+                if (!trigger) return;
+                var code = trigger.getAttribute('data-fx-favorite-remove');
+                if (!code) return;
+                try {
+                    await updateFavorite(code, 'remove');
+                } catch (e) {
+                    alert('No fue posible quitar la moneda de favoritos.');
+                }
+            });
+        }
+        baseInput.addEventListener('change', loadFxData);
+        if (yearInput) {
+            yearInput.addEventListener('change', loadHistoricalData);
+        }
+        setInterval(loadFxData, 60000);
+
+        var loginModal = document.getElementById('login-modal');
+        var signupModal = document.getElementById('signup-modal');
+        var restrictedModal = document.getElementById('restricted-modal');
+        var alertModal = document.getElementById('alert-modal');
+        var loginForm = loginModal ? loginModal.querySelector('form') : null;
+        var signupForm = signupModal ? signupModal.querySelector('form') : null;
+        var alertForm = alertModal ? alertModal.querySelector('form') : null;
+        var openLoginBtn = document.getElementById('open-login-modal');
+        var openSignupBtn = document.getElementById('open-signup-modal');
+        var openAlertBtn = document.getElementById('open-alert-modal');
+        var closeLoginBtn = document.getElementById('close-login-modal');
+        var closeSignupBtn = document.getElementById('close-signup-modal');
+        var closeRestrictedBtn = document.getElementById('close-restricted-modal');
+        var closeAlertBtn = document.getElementById('close-alert-modal');
+        var openLoginFromRestrictedBtn = document.getElementById('open-login-from-restricted');
+        var switchToSignup = document.getElementById('switch-to-signup');
+        var switchToLogin = document.getElementById('switch-to-login');
+        var modalState = document.getElementById('js-modal-state');
+        var activeModal = modalState ? (modalState.dataset.activeModal || '') : '';
+
+        function prepareAuthForm(form, mode) {
+            if (!form) return;
+            form.setAttribute('autocomplete', 'off');
+            var textInputs = form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+            textInputs.forEach(function (input, index) {
+                input.value = '';
+                if (mode === 'login' && index === 0) {
+                    input.setAttribute('autocomplete', 'off');
+                    input.setAttribute('autocapitalize', 'none');
+                } else if (input.type === 'password') {
+                    input.setAttribute('autocomplete', 'new-password');
+                } else {
+                    input.setAttribute('autocomplete', 'off');
+                }
+            });
+        }
+
+        function openModal(modal) {
+            if (!modal) return;
+            if (typeof modal.showModal === 'function') {
+                modal.showModal();
+            } else {
+                modal.setAttribute('open', 'open');
+            }
+        }
+
+        function closeModal(modal) {
+            if (!modal) return;
+            if (typeof modal.close === 'function') {
+                modal.close();
+            } else {
+                modal.removeAttribute('open');
+            }
+        }
+
+        if (openLoginBtn) {
+            openLoginBtn.addEventListener('click', function (event) {
+                event.preventDefault();
+                prepareAuthForm(loginForm, 'login');
+                openModal(loginModal);
+            });
+        }
+        if (openSignupBtn) {
+            openSignupBtn.addEventListener('click', function (event) {
+                event.preventDefault();
+                prepareAuthForm(signupForm, 'signup');
+                openModal(signupModal);
+            });
+        }
+        if (switchToSignup) {
+            switchToSignup.addEventListener('click', function (event) {
+                event.preventDefault();
+                closeModal(loginModal);
+                prepareAuthForm(signupForm, 'signup');
+                openModal(signupModal);
+            });
+        }
+        if (switchToLogin) {
+            switchToLogin.addEventListener('click', function (event) {
+                event.preventDefault();
+                closeModal(signupModal);
+                prepareAuthForm(loginForm, 'login');
+                openModal(loginModal);
+            });
+        }
+        if (closeLoginBtn) {
+            closeLoginBtn.addEventListener('click', function () { closeModal(loginModal); });
+        }
+        if (closeSignupBtn) {
+            closeSignupBtn.addEventListener('click', function () { closeModal(signupModal); });
+        }
+        if (closeRestrictedBtn) {
+            closeRestrictedBtn.addEventListener('click', function () { closeModal(restrictedModal); });
+        }
+        if (openAlertBtn) {
+            openAlertBtn.addEventListener('click', function () {
+                openModal(alertModal);
+            });
+        }
+        if (closeAlertBtn) {
+            closeAlertBtn.addEventListener('click', function () { closeModal(alertModal); });
+        }
+        if (openLoginFromRestrictedBtn) {
+            openLoginFromRestrictedBtn.addEventListener('click', function () {
+                closeModal(restrictedModal);
+                prepareAuthForm(loginForm, 'login');
+                openModal(loginModal);
+            });
+        }
+
+        if (activeModal === 'login') {
+            openModal(loginModal);
+        } else if (activeModal === 'signup') {
+            openModal(signupModal);
+        } else if (activeModal === 'restricted') {
+            openModal(restrictedModal);
+        } else if (activeModal === 'alert') {
+            openModal(alertModal);
+        }
+
+        prepareAuthForm(loginForm, 'login');
+        prepareAuthForm(signupForm, 'signup');
+        prepareAuthForm(alertForm, 'alert');
+    });
+</script>
+{% if user.is_authenticated %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        function getCookie(name) {
+            var cookieValue = null;
+            if (!document.cookie) return cookieValue;
+            var cookies = document.cookie.split(';');
+            for (var i = 0; i < cookies.length; i += 1) {
+                var cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+            return cookieValue;
+        }
+
+        async function checkUserAlerts() {
+            try {
+                var response = await fetch('{% url "user_alert_check" %}', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken') || '',
+                        'Accept': 'application/json'
+                    }
+                });
+                if (!response.ok) return;
+                var payload = await response.json();
+                var badge = document.getElementById('sidebar-user-alert-unread-badge');
+                if (badge && typeof payload.unread_count === 'number') {
+                    badge.textContent = String(payload.unread_count);
+                }
+                if (payload.triggered_now > 0) {
+                    window.location.reload();
+                }
+            } catch (e) {
+            }
+        }
+
+        checkUserAlerts();
+        setInterval(checkUserAlerts, 60000);
+    });
+</script>
+{% endif %}
+{% endblock %}

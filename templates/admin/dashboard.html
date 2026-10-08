@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Admin{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/20 backdrop-blur">
+    <h1 class="text-3xl font-bold tracking-tight text-white">Dashboard Administrador</h1>
+    <p class="mt-2 text-slate-300">Gestion de usuarios por roles.</p>
+    {% if not is_primary_admin %}
+    <p class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+        Tu perfil admin tiene permisos limitados: solo puedes ver administradores y ver/editar usuarios normales.
+    </p>
+    {% endif %}
+
+    <div class="mt-6 grid gap-4 md:grid-cols-3">
+        <a href="{% url 'admin_users_normal' %}" class="rounded-xl border border-white/10 bg-slate-900/40 p-4 hover:border-brand-500/50">
+            <p class="text-sm text-slate-300">Usuarios normales</p>
+            <p class="mt-2 text-3xl font-bold text-white">{{ normal_count }}</p>
+            <p class="mt-2 text-sm text-brand-100">Ir a CRUD de usuarios normales</p>
+        </a>
+        <a href="{% url 'admin_users_admin' %}" class="rounded-xl border border-white/10 bg-slate-900/40 p-4 hover:border-brand-500/50">
+            <p class="text-sm text-slate-300">Administradores</p>
+            <p class="mt-2 text-3xl font-bold text-white">{{ admin_count }}</p>
+            <p class="mt-2 text-sm text-brand-100">Ir a CRUD de administradores</p>
+        </a>
+        <a href="{% url 'admin_stocks_panel' %}" class="rounded-xl border border-white/10 bg-slate-900/40 p-4 hover:border-brand-500/50">
+            <p class="text-sm text-slate-300">Panel de acciones</p>
+            <p class="mt-2 text-3xl font-bold text-white">Yahoo Finance</p>
+            <p class="mt-2 text-sm text-brand-100">Consultar acciones de EE. UU. y Mexico</p>
+        </a>
+    </div>
+</section>
+{% endblock %}

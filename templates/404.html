@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Pagina no encontrada{% endblock %}
+
+{% block content %}
+<section class="mx-auto mt-6 max-w-2xl rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6">
+    <h1 class="text-3xl font-bold text-amber-200">404 - Pagina no encontrada</h1>
+    <p class="mt-3 text-sm text-amber-100">
+        La ruta solicitada no existe o fue movida.
+    </p>
+    <a href="{% url 'home' %}" class="mt-4 inline-block rounded-lg border border-amber-300/40 px-4 py-2 text-sm text-amber-100 hover:bg-amber-500/20">
+        Volver a inicio
+    </a>
+</section>
+{% endblock %}

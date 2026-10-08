@@ -1,0 +1,28 @@
+{
+  "name": "finanzas",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./divisas/static_src/input.css -o ./divisas/static/css/tailwind.css --minify",
+    "watch:css": "npx tailwindcss -i ./divisas/static_src/input.css -o ./divisas/static/css/tailwind.css --watch",
+    "runserver": "python manage.py runserver",
+    "runserver:supabase": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_supabase.ps1",
+    "runserver:insecure": "python manage.py runserver --insecure",
+    "runserver:lan": "python manage.py runserver 0.0.0.0:8000",
+    "dev": "concurrently \"npm:watch:css\" \"npm:runserver\"",
+    "dev:supabase": "concurrently \"npm:watch:css\" \"npm:runserver:supabase\"",
+    "dev:insecure": "concurrently \"npm:watch:css\" \"npm:runserver:insecure\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.17"
+  }
+}

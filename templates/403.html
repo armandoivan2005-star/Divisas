@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Acceso denegado{% endblock %}
+
+{% block content %}
+<section class="mx-auto mt-6 max-w-2xl rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6">
+    <h1 class="text-3xl font-bold text-rose-200">403 - Acceso denegado</h1>
+    <p class="mt-3 text-sm text-rose-100">
+        No tienes permisos para acceder a este recurso.
+    </p>
+    <a href="{% url 'home' %}" class="mt-4 inline-block rounded-lg border border-rose-300/40 px-4 py-2 text-sm text-rose-100 hover:bg-rose-500/20">
+        Volver a inicio
+    </a>
+</section>
+{% endblock %}

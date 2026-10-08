@@ -1,0 +1,342 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Practica01{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+    <style>
+        body.a11y-high-contrast {
+            filter: contrast(1.2) saturate(1.1);
+        }
+        body.a11y-reduce-motion * {
+            animation: none !important;
+            transition: none !important;
+            scroll-behavior: auto !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen overflow-x-hidden bg-slate-950 text-slate-100">
+    <div aria-hidden="true" class="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,#0f766e33,transparent_40%),radial-gradient(circle_at_bottom_right,#0ea5e933,transparent_40%)]"></div>
+    <nav class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+        <a href="{% url 'home' %}" class="text-lg font-semibold tracking-wide text-white">Panel principal</a>
+        {% if user.is_authenticated %}
+            <div class="flex items-center gap-3">
+            <a href="{% url 'site_map' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Mapa del sitio</a>
+            {% if user.is_staff %}
+            <a href="{% url 'admin_dashboard' %}" class="rounded-lg border border-brand-500/40 px-3 py-2 text-sm text-brand-100 hover:bg-brand-500/20">Dashboard</a>
+            {% endif %}
+            <span class="rounded-full border border-brand-500/50 bg-brand-500/20 px-3 py-1 text-sm">Usuario: {{ user.username }}</span>
+            <button id="open-user-sidebar" type="button" aria-label="Abrir menu de usuario" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            </div>
+        {% else %}
+            <div class="flex items-center gap-3">
+                <a href="{% url 'site_map' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Mapa del sitio</a>
+                <a id="open-login-modal" href="{% url 'login' %}" class="rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Iniciar sesion</a>
+                <a id="open-signup-modal" href="{% url 'signup' %}" class="rounded-lg bg-brand-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-brand-100">Registrarse</a>
+            </div>
+        {% endif %}
+    </nav>
+
+    <button id="open-a11y-menu" type="button" aria-label="Abrir menu de accesibilidad"
+        class="fixed bottom-5 right-5 z-30 rounded-full border border-brand-500/50 bg-slate-900/90 p-3 shadow-lg shadow-cyan-900/30 hover:bg-slate-800">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-brand-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="4.5" r="1.5"></circle>
+            <path d="M9.5 8h5"></path>
+            <path d="M12 8v5"></path>
+            <path d="M8.5 20l2-5 1.5 1.5L13.5 15l2 5"></path>
+        </svg>
+    </button>
+    <div id="a11y-menu" class="fixed bottom-20 right-5 z-30 hidden w-80 rounded-xl border border-white/10 bg-slate-900/95 p-4 shadow-lg shadow-cyan-900/30">
+        <div class="flex items-center justify-between">
+            <h2 class="text-base font-semibold text-white">Accesibilidad</h2>
+            <button id="close-a11y-menu" type="button" class="rounded-md border border-white/20 px-2 py-1 text-xs hover:bg-white/10">Cerrar</button>
+        </div>
+        <div class="mt-4 space-y-4 rounded-lg border border-white/10 bg-slate-900/50 p-3 text-sm">
+            <div>
+                <p class="text-slate-300">Tamano de texto</p>
+                <div class="mt-2 flex items-center gap-2">
+                    <button id="a11y-font-dec" type="button" class="rounded-md border border-white/20 px-3 py-1 hover:bg-white/10">A-</button>
+                    <span id="a11y-font-value" class="text-xs text-slate-300">100%</span>
+                    <button id="a11y-font-inc" type="button" class="rounded-md border border-white/20 px-3 py-1 hover:bg-white/10">A+</button>
+                    <button id="a11y-font-reset" type="button" class="ml-auto rounded-md border border-white/20 px-3 py-1 text-xs hover:bg-white/10">Restablecer</button>
+                </div>
+            </div>
+            <label class="flex items-center justify-between gap-3">
+                <span class="text-slate-300">Alto contraste</span>
+                <input id="a11y-contrast" type="checkbox" class="h-4 w-4">
+            </label>
+            <label class="flex items-center justify-between gap-3">
+                <span class="text-slate-300">Reducir animaciones</span>
+                <input id="a11y-motion" type="checkbox" class="h-4 w-4">
+            </label>
+        </div>
+    </div>
+
+    {% if user.is_authenticated %}
+    <div id="user-sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/60"></div>
+    <aside id="user-sidebar" class="fixed right-0 top-0 z-50 h-full w-80 translate-x-full border-l border-white/10 bg-slate-900/95 p-5 transition-transform duration-200 ease-out">
+        <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-white">Menu de usuario</h2>
+            <button id="close-user-sidebar" type="button" class="rounded-md border border-white/20 px-2 py-1 text-xs hover:bg-white/10">Cerrar</button>
+        </div>
+        <div class="mt-5 space-y-3 rounded-lg border border-white/10 bg-slate-900/50 p-3 text-sm">
+            <p><span class="text-slate-400">Usuario:</span> <span class="font-semibold text-white">{{ user.username }}</span></p>
+            <p><span class="text-slate-400">Email:</span> <span class="text-slate-200">{{ user.email|default:"-" }}</span></p>
+            {% if user.is_staff %}
+            <p><span class="text-slate-400">Rol:</span> <span class="text-slate-200">{% if user.is_staff %}ADMINISTRADOR{% else %}NORMAL{% endif %}</span></p>
+            {% endif %}
+        </div>
+        <div class="mt-5 space-y-2">
+            <a href="{% url 'home' %}" class="block rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10">Ir al panel principal</a>
+            {% if user.is_staff %}
+            <a href="{% url 'admin_dashboard' %}" class="block rounded-lg border border-brand-500/40 px-3 py-2 text-sm text-brand-100 hover:bg-brand-500/20">Ir al dashboard admin</a>
+            {% endif %}
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="mt-2 w-full rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20">Cerrar sesion</button>
+            </form>
+        </div>
+        {% if user.is_staff %}
+        <div class="mt-6 rounded-lg border border-white/10 bg-slate-900/50 p-3">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-white">Notificaciones</h3>
+                <span class="rounded-full border border-brand-500/40 bg-brand-500/10 px-2 py-0.5 text-xs text-brand-100">
+                    {{ sidebar_unread_notifications }}
+                </span>
+            </div>
+            {% if sidebar_notifications %}
+            <form method="post" action="{% url 'admin_notification_mark_all_read' %}" class="mt-2">
+                {% csrf_token %}
+                <button type="submit" class="rounded-md border border-white/20 px-2 py-1 text-xs text-slate-200 hover:bg-white/10">
+                    Marcar todas como leidas
+                </button>
+            </form>
+            <div class="mt-3 max-h-52 space-y-2 overflow-auto pr-1">
+                {% for item in sidebar_notifications %}
+                <div class="rounded-md border border-white/10 bg-slate-950/60 p-2">
+                    {% if not item.is_read %}
+                    <span class="mb-1 inline-block rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-200">Nueva</span>
+                    {% endif %}
+                    <p class="text-xs text-slate-200">{{ item.message }}</p>
+                    <p class="mt-1 text-[11px] text-slate-400">{{ item.created_at|date:"Y-m-d H:i" }}</p>
+                    {% if not item.is_read %}
+                    <form method="post" action="{% url 'admin_notification_mark_read' item.id %}" class="mt-2">
+                        {% csrf_token %}
+                        <button type="submit" class="rounded-md border border-white/20 px-2 py-1 text-[11px] text-slate-200 hover:bg-white/10">
+                            Marcar como leida
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="mt-3 text-xs text-slate-400">Sin notificaciones.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if user.username|lower != 'armando' %}
+        <form method="post" action="{% url 'delete_own_account' %}" class="mt-6 rounded-lg border border-rose-500/40 bg-rose-500/10 p-3">
+            {% csrf_token %}
+            <p class="text-xs text-rose-200">Accion irreversible: elimina tu cuenta y cierra sesion.</p>
+            <button type="submit" class="mt-2 w-full rounded-lg border border-rose-500/50 px-3 py-2 text-sm text-rose-100 hover:bg-rose-500/20">
+                Eliminar mi cuenta
+            </button>
+        </form>
+        {% else %}
+        <p class="mt-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+            La cuenta armando no puede eliminarse desde este menu.
+        </p>
+        {% endif %}
+    </aside>
+    {% endif %}
+    <main class="mx-auto w-full max-w-6xl px-6 pb-10">
+        {% if breadcrumbs %}
+        <nav aria-label="breadcrumb" class="mb-4">
+            <ol class="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                {% for crumb in breadcrumbs %}
+                    {% if crumb.url %}
+                    <li><a href="{{ crumb.url }}" class="hover:text-slate-200">{{ crumb.label }}</a></li>
+                    {% else %}
+                    <li class="text-slate-100">{{ crumb.label }}</li>
+                    {% endif %}
+                    {% if not forloop.last %}
+                    <li aria-hidden="true">/</li>
+                    {% endif %}
+                {% endfor %}
+            </ol>
+        </nav>
+        {% endif %}
+        {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                    <div class="rounded-lg border border-brand-500/40 bg-brand-500/10 px-3 py-2 text-sm text-brand-100">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var formFields = document.querySelectorAll('input, select, textarea');
+            formFields.forEach(function (field) {
+                if (field.type === 'hidden') return;
+                field.classList.add('mt-1', 'w-full', 'rounded-lg', 'border', 'border-slate-600', 'bg-slate-950/70', 'px-3', 'py-2', 'text-sm', 'text-slate-100', 'outline-none', 'focus:border-brand-500', 'focus:ring-2', 'focus:ring-brand-500/40');
+            });
+
+            var labels = document.querySelectorAll('label');
+            labels.forEach(function (label) {
+                label.classList.add('text-sm', 'text-slate-300');
+            });
+
+            var helpTexts = document.querySelectorAll('.helptext, ul.errorlist');
+            helpTexts.forEach(function (item) {
+                item.classList.add('mt-1', 'text-xs', 'text-slate-400');
+            });
+
+            var passwordInputs = document.querySelectorAll('input[type="password"]');
+            passwordInputs.forEach(function (input) {
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = 'Mostrar';
+                button.className = 'ml-2 rounded-md border border-slate-600 px-2 py-1 text-xs hover:bg-slate-800';
+                button.addEventListener('click', function () {
+                    var showing = input.type === 'text';
+                    input.type = showing ? 'password' : 'text';
+                    button.textContent = showing ? 'Mostrar' : 'Ocultar';
+                });
+                input.insertAdjacentElement('afterend', button);
+            });
+
+            var openSidebarBtn = document.getElementById('open-user-sidebar');
+            var closeSidebarBtn = document.getElementById('close-user-sidebar');
+            var sidebar = document.getElementById('user-sidebar');
+            var backdrop = document.getElementById('user-sidebar-backdrop');
+            var openA11yBtn = document.getElementById('open-a11y-menu');
+            var closeA11yBtn = document.getElementById('close-a11y-menu');
+            var a11yMenu = document.getElementById('a11y-menu');
+
+            function openSidebar() {
+                if (!sidebar || !backdrop) return;
+                backdrop.classList.remove('hidden');
+                sidebar.classList.remove('translate-x-full');
+            }
+
+            function closeSidebar() {
+                if (!sidebar || !backdrop) return;
+                sidebar.classList.add('translate-x-full');
+                backdrop.classList.add('hidden');
+            }
+
+            if (openSidebarBtn) {
+                openSidebarBtn.addEventListener('click', openSidebar);
+            }
+            if (closeSidebarBtn) {
+                closeSidebarBtn.addEventListener('click', closeSidebar);
+            }
+            if (backdrop) {
+                backdrop.addEventListener('click', closeSidebar);
+            }
+
+            function openA11yMenu() {
+                if (!a11yMenu) return;
+                a11yMenu.classList.remove('hidden');
+            }
+
+            function closeA11yMenu() {
+                if (!a11yMenu) return;
+                a11yMenu.classList.add('hidden');
+            }
+
+            if (openA11yBtn) {
+                openA11yBtn.addEventListener('click', function () {
+                    if (!a11yMenu) return;
+                    a11yMenu.classList.toggle('hidden');
+                });
+            }
+            if (closeA11yBtn) {
+                closeA11yBtn.addEventListener('click', closeA11yMenu);
+            }
+            document.addEventListener('click', function (event) {
+                if (!a11yMenu || !openA11yBtn) return;
+                if (a11yMenu.classList.contains('hidden')) return;
+                var clickedInsideMenu = a11yMenu.contains(event.target);
+                var clickedToggle = openA11yBtn.contains(event.target);
+                if (!clickedInsideMenu && !clickedToggle) {
+                    closeA11yMenu();
+                }
+            });
+
+            var fontDec = document.getElementById('a11y-font-dec');
+            var fontInc = document.getElementById('a11y-font-inc');
+            var fontReset = document.getElementById('a11y-font-reset');
+            var fontValue = document.getElementById('a11y-font-value');
+            var contrastToggle = document.getElementById('a11y-contrast');
+            var motionToggle = document.getElementById('a11y-motion');
+            var savedFont = parseInt(localStorage.getItem('a11y_font_scale') || '100', 10);
+            var savedContrast = localStorage.getItem('a11y_contrast') === '1';
+            var savedMotion = localStorage.getItem('a11y_reduce_motion') === '1';
+
+            function applyFontScale(scale) {
+                var normalized = Math.max(90, Math.min(140, scale));
+                document.documentElement.style.fontSize = normalized + '%';
+                if (fontValue) fontValue.textContent = normalized + '%';
+                localStorage.setItem('a11y_font_scale', String(normalized));
+            }
+
+            function applyContrast(enabled) {
+                document.body.classList.toggle('a11y-high-contrast', enabled);
+                localStorage.setItem('a11y_contrast', enabled ? '1' : '0');
+                if (contrastToggle) contrastToggle.checked = enabled;
+            }
+
+            function applyReduceMotion(enabled) {
+                document.body.classList.toggle('a11y-reduce-motion', enabled);
+                localStorage.setItem('a11y_reduce_motion', enabled ? '1' : '0');
+                if (motionToggle) motionToggle.checked = enabled;
+            }
+
+            applyFontScale(isNaN(savedFont) ? 100 : savedFont);
+            applyContrast(savedContrast);
+            applyReduceMotion(savedMotion);
+
+            if (fontDec) {
+                fontDec.addEventListener('click', function () {
+                    var current = parseInt(localStorage.getItem('a11y_font_scale') || '100', 10);
+                    applyFontScale(current - 5);
+                });
+            }
+            if (fontInc) {
+                fontInc.addEventListener('click', function () {
+                    var current = parseInt(localStorage.getItem('a11y_font_scale') || '100', 10);
+                    applyFontScale(current + 5);
+                });
+            }
+            if (fontReset) {
+                fontReset.addEventListener('click', function () {
+                    applyFontScale(100);
+                    applyContrast(false);
+                    applyReduceMotion(false);
+                });
+            }
+            if (contrastToggle) {
+                contrastToggle.addEventListener('change', function () {
+                    applyContrast(contrastToggle.checked);
+                });
+            }
+            if (motionToggle) {
+                motionToggle.addEventListener('change', function () {
+                    applyReduceMotion(motionToggle.checked);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
